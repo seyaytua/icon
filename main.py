@@ -14,6 +14,7 @@ import platform
 import json
 from pathlib import Path
 from datetime import datetime
+import copy
 
 
 class IconGeneratorThread(QThread):
@@ -442,13 +443,14 @@ class RichIconGenerator(QMainWindow):
         self.current_preset = None
         self.history = []
         self.history_index = -1
+        self.max_history = 20  # 履歴の最大数
         
         self.init_ui()
         self.apply_modern_style()
     
     def init_ui(self):
         """UIの初期化"""
-        self.setWindowTitle('プロフェッショナルアイコンジェネレーター v2.0')
+        self.setWindowTitle('プロフェッショナルアイコンジェネレーター v2.1')
         self.setGeometry(100, 100, 1400, 900)
         
         # メインウィジェット
@@ -482,11 +484,34 @@ class RichIconGenerator(QMainWindow):
         layout = QVBoxLayout()
         widget.setLayout(layout)
         
-        # タイトル
+        # タイトルと履歴ボタン
+        header_layout = QHBoxLayout()
+        
         title = QLabel('プレビュー')
         title.setFont(QFont('Arial', 16, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        header_layout.addWidget(title)
+        
+        # アンドゥ・リドゥボタン
+        history_layout = QHBoxLayout()
+        
+        self.undo_btn = QPushButton('⬅️ 戻る')
+        self.undo_btn.clicked.connect(self.undo)
+        self.undo_btn.setEnabled(False)
+        self.undo_btn.setToolTip('1つ前の状態に戻る (Ctrl+Z)')
+        self.undo_btn.setMinimumHeight(35)
+        history_layout.addWidget(self.undo_btn)
+        
+        self.redo_btn = QPushButton('➡️ 進む')
+        self.redo_btn.clicked.connect(self.redo)
+        self.redo_btn.setEnabled(False)
+        self.redo_btn.setToolTip('1つ後の状態に進む (Ctrl+Y)')
+        self.redo_btn.setMinimumHeight(35)
+        history_layout.addWidget(self.redo_btn)
+        
+        header_layout.addLayout(history_layout)
+        
+        layout.addLayout(header_layout)
         
         # メインプレビュー
         preview_container = QFrame()
@@ -736,7 +761,7 @@ class RichIconGenerator(QMainWindow):
         
         # 明るさ
         brightness_group = self.create_slider_group(
-            "明るさ", -100, 100, 0, self.apply_adjustments
+            "明るさ", -100, 100, 0, self.on_adjustment_changed
         )
         self.brightness_slider = brightness_group['slider']
         self.brightness_value = brightness_group['value']
@@ -744,7 +769,7 @@ class RichIconGenerator(QMainWindow):
         
         # コントラスト
         contrast_group = self.create_slider_group(
-            "コントラスト", -100, 100, 0, self.apply_adjustments
+            "コントラスト", -100, 100, 0, self.on_adjustment_changed
         )
         self.contrast_slider = contrast_group['slider']
         self.contrast_value = contrast_group['value']
@@ -752,7 +777,7 @@ class RichIconGenerator(QMainWindow):
         
         # 彩度
         saturation_group = self.create_slider_group(
-            "彩度", -100, 100, 0, self.apply_adjustments
+            "彩度", -100, 100, 0, self.on_adjustment_changed
         )
         self.saturation_slider = saturation_group['slider']
         self.saturation_value = saturation_group['value']
@@ -760,7 +785,7 @@ class RichIconGenerator(QMainWindow):
         
         # シャープネス
         sharpness_group = self.create_slider_group(
-            "シャープネス", -100, 100, 0, self.apply_adjustments
+            "シャープネス", -100, 100, 0, self.on_adjustment_changed
         )
         self.sharpness_slider = sharpness_group['slider']
         self.sharpness_value = sharpness_group['value']
@@ -782,7 +807,7 @@ class RichIconGenerator(QMainWindow):
         
         # ぼかし
         blur_group = self.create_slider_group(
-            "ぼかし", 0, 30, 0, self.apply_effects
+            "ぼかし", 0, 30, 0, self.on_adjustment_changed
         )
         self.blur_slider = blur_group['slider']
         self.blur_value = blur_group['value']
@@ -793,11 +818,11 @@ class RichIconGenerator(QMainWindow):
         rounded_layout = QVBoxLayout()
         
         self.rounded_check = QCheckBox("角を丸くする")
-        self.rounded_check.stateChanged.connect(self.apply_effects)
+        self.rounded_check.stateChanged.connect(self.on_adjustment_changed)
         rounded_layout.addWidget(self.rounded_check)
         
         radius_group = self.create_slider_group(
-            "半径", 0, 100, 30, self.apply_effects
+            "半径", 0, 100, 30, self.on_adjustment_changed
         )
         self.corner_radius_slider = radius_group['slider']
         self.corner_radius_value = radius_group['value']
@@ -811,11 +836,11 @@ class RichIconGenerator(QMainWindow):
         shadow_layout = QVBoxLayout()
         
         self.shadow_check = QCheckBox("影を追加")
-        self.shadow_check.stateChanged.connect(self.apply_effects)
+        self.shadow_check.stateChanged.connect(self.on_adjustment_changed)
         shadow_layout.addWidget(self.shadow_check)
         
         shadow_blur_group = self.create_slider_group(
-            "ぼかし", 0, 30, 15, self.apply_effects
+            "ぼかし", 0, 30, 15, self.on_adjustment_changed
         )
         self.shadow_blur_slider = shadow_blur_group['slider']
         self.shadow_blur_value = shadow_blur_group['value']
@@ -829,11 +854,11 @@ class RichIconGenerator(QMainWindow):
         border_layout = QVBoxLayout()
         
         self.border_check = QCheckBox("枠線を追加")
-        self.border_check.stateChanged.connect(self.apply_effects)
+        self.border_check.stateChanged.connect(self.on_adjustment_changed)
         border_layout.addWidget(self.border_check)
         
         border_width_group = self.create_slider_group(
-            "太さ", 1, 20, 5, self.apply_effects
+            "太さ", 1, 20, 5, self.on_adjustment_changed
         )
         self.border_width_slider = border_width_group['slider']
         self.border_width_value = border_width_group['value']
@@ -847,7 +872,7 @@ class RichIconGenerator(QMainWindow):
         other_layout = QVBoxLayout()
         
         self.glass_check = QCheckBox("ガラス効果")
-        self.glass_check.stateChanged.connect(self.apply_effects)
+        self.glass_check.stateChanged.connect(self.on_adjustment_changed)
         other_layout.addWidget(self.glass_check)
         
         other_group.setLayout(other_layout)
@@ -864,7 +889,7 @@ class RichIconGenerator(QMainWindow):
         
         # パディング
         padding_group = self.create_slider_group(
-            "パディング", 0, 100, 0, self.apply_background
+            "パディング", 0, 100, 0, self.on_adjustment_changed
         )
         self.padding_slider = padding_group['slider']
         self.padding_value = padding_group['value']
@@ -875,7 +900,7 @@ class RichIconGenerator(QMainWindow):
         bg_color_layout = QVBoxLayout()
         
         self.bg_color_check = QCheckBox("背景色を追加")
-        self.bg_color_check.stateChanged.connect(self.apply_background)
+        self.bg_color_check.stateChanged.connect(self.on_adjustment_changed)
         bg_color_layout.addWidget(self.bg_color_check)
         
         color_btn_layout = QHBoxLayout()
@@ -903,7 +928,7 @@ class RichIconGenerator(QMainWindow):
         gradient_layout = QVBoxLayout()
         
         self.gradient_check = QCheckBox("グラデーション背景")
-        self.gradient_check.stateChanged.connect(self.apply_background)
+        self.gradient_check.stateChanged.connect(self.on_adjustment_changed)
         gradient_layout.addWidget(self.gradient_check)
         
         # グラデーション色1
@@ -951,7 +976,7 @@ class RichIconGenerator(QMainWindow):
         
         self.gradient_direction = QComboBox()
         self.gradient_direction.addItems(["垂直", "水平"])
-        self.gradient_direction.currentIndexChanged.connect(self.apply_background)
+        self.gradient_direction.currentIndexChanged.connect(self.on_adjustment_changed)
         direction_layout.addWidget(self.gradient_direction)
         gradient_layout.addLayout(direction_layout)
         
@@ -1040,7 +1065,8 @@ class RichIconGenerator(QMainWindow):
             "💡 ヒント:\n"
             "• 最高品質のアイコンには1024x1024以上の画像を推奨\n"
             "• 透明背景のPNG形式が最適\n"
-            "• macOS用.icnsはmacでのみ生成可能"
+            "• macOS用.icnsはmacでのみ生成可能\n"
+            "• 戻る/進むボタンで編集履歴を移動できます"
         )
         info_label.setStyleSheet("""
             padding: 15px;
@@ -1121,6 +1147,10 @@ class RichIconGenerator(QMainWindow):
             QPushButton:pressed {
                 background-color: #d0d0d0;
             }
+            QPushButton:disabled {
+                background-color: #f5f5f5;
+                color: #999999;
+            }
             QSlider::groove:horizontal {
                 border: 1px solid #bbb;
                 background: white;
@@ -1150,6 +1180,160 @@ class RichIconGenerator(QMainWindow):
             }
         """)
     
+    def add_to_history(self, image):
+        """履歴に追加"""
+        # 現在の位置より後ろの履歴を削除
+        self.history = self.history[:self.history_index + 1]
+        
+        # 新しい画像を追加
+        self.history.append(image.copy())
+        
+        # 履歴の最大数を超えたら古いものを削除
+        if len(self.history) > self.max_history:
+            self.history.pop(0)
+        else:
+            self.history_index += 1
+        
+        # ボタンの状態を更新
+        self.update_history_buttons()
+    
+    def update_history_buttons(self):
+        """履歴ボタンの状態を更新"""
+        self.undo_btn.setEnabled(self.history_index > 0)
+        self.redo_btn.setEnabled(self.history_index < len(self.history) - 1)
+    
+    def undo(self):
+        """1つ前の状態に戻る"""
+        if self.history_index > 0:
+            self.history_index -= 1
+            self.edited_image = self.history[self.history_index].copy()
+            self.update_preview()
+            self.update_history_buttons()
+            self.statusBar().showMessage('1つ前の状態に戻しました')
+    
+    def redo(self):
+        """1つ後の状態に進む"""
+        if self.history_index < len(self.history) - 1:
+            self.history_index += 1
+            self.edited_image = self.history[self.history_index].copy()
+            self.update_preview()
+            self.update_history_buttons()
+            self.statusBar().showMessage('1つ後の状態に進みました')
+    
+    def on_adjustment_changed(self):
+        """調整・エフェクト・背景が変更されたときの処理"""
+        if not self.source_image:
+            return
+        
+        try:
+            # 常にソース画像から開始
+            result = self.source_image.copy()
+            
+            # ステップ1: 調整を適用
+            result = self.apply_adjustments_to_image(result)
+            
+            # ステップ2: エフェクトを適用
+            result = self.apply_effects_to_image(result)
+            
+            # ステップ3: 背景を適用
+            result = self.apply_background_to_image(result)
+            
+            # 結果を保存
+            self.edited_image = result
+            self.update_preview()
+            
+        except Exception as e:
+            print(f"Adjustment error: {e}")
+    
+    def apply_adjustments_to_image(self, image):
+        """画像に調整を適用"""
+        result = image.copy()
+        
+        # 明るさ
+        brightness_value = self.brightness_slider.value() / 100.0
+        if brightness_value != 0:
+            enhancer = ImageEnhance.Brightness(result)
+            result = enhancer.enhance(1 + brightness_value)
+        
+        # コントラスト
+        contrast_value = self.contrast_slider.value() / 100.0
+        if contrast_value != 0:
+            enhancer = ImageEnhance.Contrast(result)
+            result = enhancer.enhance(1 + contrast_value)
+        
+        # 彩度
+        saturation_value = self.saturation_slider.value() / 100.0
+        if saturation_value != 0:
+            enhancer = ImageEnhance.Color(result)
+            result = enhancer.enhance(1 + saturation_value)
+        
+        # シャープネス
+        sharpness_value = self.sharpness_slider.value() / 100.0
+        if sharpness_value != 0:
+            enhancer = ImageEnhance.Sharpness(result)
+            result = enhancer.enhance(1 + sharpness_value)
+        
+        return result
+    
+    def apply_effects_to_image(self, image):
+        """画像にエフェクトを適用"""
+        result = image.copy()
+        
+        # ぼかし
+        blur_value = self.blur_slider.value()
+        if blur_value > 0:
+            result = result.filter(ImageFilter.GaussianBlur(blur_value / 2))
+        
+        # 角丸
+        if self.rounded_check.isChecked():
+            radius = self.corner_radius_slider.value()
+            result = AdvancedImageProcessor.create_rounded_corners(result, radius)
+        
+        # 枠線
+        if self.border_check.isChecked():
+            width = self.border_width_slider.value()
+            result = AdvancedImageProcessor.add_border(result, width)
+        
+        # ガラス効果
+        if self.glass_check.isChecked():
+            result = AdvancedImageProcessor.apply_glass_effect(result)
+        
+        # 影（最後に適用）
+        if self.shadow_check.isChecked():
+            blur = self.shadow_blur_slider.value()
+            result = AdvancedImageProcessor.add_drop_shadow(result, blur_radius=blur)
+        
+        return result
+    
+    def apply_background_to_image(self, image):
+        """画像に背景を適用"""
+        result = image.copy()
+        
+        # パディング
+        padding = self.padding_slider.value()
+        if padding > 0:
+            result = AdvancedImageProcessor.add_padding(result, padding)
+        
+        # 背景色
+        if self.bg_color_check.isChecked():
+            bg = Image.new('RGBA', result.size, self.bg_color)
+            final = Image.new('RGBA', result.size)
+            final.paste(bg, (0, 0))
+            final.paste(result, (0, 0), result)
+            result = final
+        
+        # グラデーション
+        if self.gradient_check.isChecked():
+            direction = 'vertical' if self.gradient_direction.currentIndex() == 0 else 'horizontal'
+            result = AdvancedImageProcessor.add_gradient_background(
+                result,
+                self.grad_color1,
+                self.grad_color2,
+                direction
+            )
+        
+        return result
+    
     def select_image(self):
         """画像を選択"""
         file_path, _ = QFileDialog.getOpenFileName(
@@ -1169,8 +1353,11 @@ class RichIconGenerator(QMainWindow):
                 self.source_image = self.source_image.convert('RGBA')
             
             self.edited_image = self.source_image.copy()
+            
+            # 履歴をリセット
             self.history = [self.source_image.copy()]
             self.history_index = 0
+            self.update_history_buttons()
             
             self.update_preview()
             self.statusBar().showMessage(f'画像を読み込みました: {os.path.basename(file_path)}')
@@ -1259,133 +1446,15 @@ class RichIconGenerator(QMainWindow):
             )
             self.current_preset = preset_name
             self.current_preset_label.setText(preset_name)
+            
+            # 履歴に追加
+            self.add_to_history(self.edited_image)
+            
             self.update_preview()
             self.statusBar().showMessage(f'プリセット「{preset_name}」を適用しました')
             
         except Exception as e:
             QMessageBox.critical(self, 'エラー', f'プリセットの適用に失敗しました:\n{str(e)}')
-    
-    def apply_adjustments(self):
-        """調整を適用"""
-        if not self.source_image:
-            return
-        
-        try:
-            self.edited_image = self.source_image.copy()
-            
-            # 明るさ
-            brightness_value = self.brightness_slider.value() / 100.0
-            if brightness_value != 0:
-                enhancer = ImageEnhance.Brightness(self.edited_image)
-                self.edited_image = enhancer.enhance(1 + brightness_value)
-            
-            # コントラスト
-            contrast_value = self.contrast_slider.value() / 100.0
-            if contrast_value != 0:
-                enhancer = ImageEnhance.Contrast(self.edited_image)
-                self.edited_image = enhancer.enhance(1 + contrast_value)
-            
-            # 彩度
-            saturation_value = self.saturation_slider.value() / 100.0
-            if saturation_value != 0:
-                enhancer = ImageEnhance.Color(self.edited_image)
-                self.edited_image = enhancer.enhance(1 + saturation_value)
-            
-            # シャープネス
-            sharpness_value = self.sharpness_slider.value() / 100.0
-            if sharpness_value != 0:
-                enhancer = ImageEnhance.Sharpness(self.edited_image)
-                self.edited_image = enhancer.enhance(1 + sharpness_value)
-            
-            self.update_preview()
-            
-        except Exception as e:
-            print(f"Adjustment error: {e}")
-    
-    def apply_effects(self):
-        """エフェクトを適用"""
-        if not self.edited_image:
-            return
-        
-        try:
-            # 現在の調整を保持
-            temp_image = self.edited_image.copy()
-            
-            # ぼかし
-            blur_value = self.blur_slider.value()
-            if blur_value > 0:
-                temp_image = temp_image.filter(
-                    ImageFilter.GaussianBlur(blur_value / 2)
-                )
-            
-            # 角丸
-            if self.rounded_check.isChecked():
-                radius = self.corner_radius_slider.value()
-                temp_image = AdvancedImageProcessor.create_rounded_corners(
-                    temp_image, radius
-                )
-            
-            # 枠線
-            if self.border_check.isChecked():
-                width = self.border_width_slider.value()
-                temp_image = AdvancedImageProcessor.add_border(temp_image, width)
-            
-            # ガラス効果
-            if self.glass_check.isChecked():
-                temp_image = AdvancedImageProcessor.apply_glass_effect(temp_image)
-            
-            # 影（最後に適用）
-            if self.shadow_check.isChecked():
-                blur = self.shadow_blur_slider.value()
-                temp_image = AdvancedImageProcessor.add_drop_shadow(
-                    temp_image, blur_radius=blur
-                )
-            
-            self.edited_image = temp_image
-            self.update_preview()
-            
-        except Exception as e:
-            print(f"Effect error: {e}")
-    
-    def apply_background(self):
-        """背景を適用"""
-        if not self.source_image:
-            return
-        
-        try:
-            # 現在の編集を取得
-            temp_image = self.edited_image.copy()
-            
-            # パディング
-            padding = self.padding_slider.value()
-            if padding > 0:
-                temp_image = AdvancedImageProcessor.add_padding(
-                    temp_image, padding
-                )
-            
-            # 背景色
-            if self.bg_color_check.isChecked():
-                bg = Image.new('RGBA', temp_image.size, self.bg_color)
-                result = Image.new('RGBA', temp_image.size)
-                result.paste(bg, (0, 0))
-                result.paste(temp_image, (0, 0), temp_image)
-                temp_image = result
-            
-            # グラデーション
-            if self.gradient_check.isChecked():
-                direction = 'vertical' if self.gradient_direction.currentIndex() == 0 else 'horizontal'
-                temp_image = AdvancedImageProcessor.add_gradient_background(
-                    temp_image,
-                    self.grad_color1,
-                    self.grad_color2,
-                    direction
-                )
-            
-            self.edited_image = temp_image
-            self.update_preview()
-            
-        except Exception as e:
-            print(f"Background error: {e}")
     
     def reset_adjustments(self):
         """調整をリセット"""
@@ -1400,6 +1469,7 @@ class RichIconGenerator(QMainWindow):
             return
         
         self.edited_image = self.edited_image.rotate(angle, expand=True)
+        self.add_to_history(self.edited_image)
         self.update_preview()
         self.statusBar().showMessage(f'{angle}度回転しました')
     
@@ -1409,6 +1479,7 @@ class RichIconGenerator(QMainWindow):
             return
         
         self.edited_image = self.edited_image.transpose(Image.FLIP_LEFT_RIGHT)
+        self.add_to_history(self.edited_image)
         self.update_preview()
         self.statusBar().showMessage('水平反転しました')
     
@@ -1418,6 +1489,7 @@ class RichIconGenerator(QMainWindow):
             return
         
         self.edited_image = self.edited_image.transpose(Image.FLIP_TOP_BOTTOM)
+        self.add_to_history(self.edited_image)
         self.update_preview()
         self.statusBar().showMessage('垂直反転しました')
     
@@ -1429,6 +1501,7 @@ class RichIconGenerator(QMainWindow):
         self.edited_image = AdvancedImageProcessor.create_circular_mask(
             self.edited_image
         )
+        self.add_to_history(self.edited_image)
         self.update_preview()
         self.statusBar().showMessage('円形マスクを適用しました')
     
@@ -1446,6 +1519,7 @@ class RichIconGenerator(QMainWindow):
         bottom = top + size
         
         self.edited_image = self.edited_image.crop((left, top, right, bottom))
+        self.add_to_history(self.edited_image)
         self.update_preview()
         self.statusBar().showMessage('正方形にトリミングしました')
     
@@ -1459,7 +1533,7 @@ class RichIconGenerator(QMainWindow):
                 f"border: 2px solid #ddd; border-radius: 5px;"
             )
             if self.bg_color_check.isChecked():
-                self.apply_background()
+                self.on_adjustment_changed()
     
     def select_gradient_color(self, color_num):
         """グラデーション色を選択"""
@@ -1481,7 +1555,7 @@ class RichIconGenerator(QMainWindow):
                 )
             
             if self.gradient_check.isChecked():
-                self.apply_background()
+                self.on_adjustment_changed()
     
     def select_output_folder(self):
         """出力フォルダを選択"""
@@ -1512,6 +1586,11 @@ class RichIconGenerator(QMainWindow):
             
             self.current_preset = None
             self.current_preset_label.setText('選択なし')
+            
+            # 履歴をリセット
+            self.history = [self.source_image.copy()]
+            self.history_index = 0
+            self.update_history_buttons()
             
             self.update_preview()
             self.statusBar().showMessage('画像をリセットしました')
@@ -1624,4 +1703,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
