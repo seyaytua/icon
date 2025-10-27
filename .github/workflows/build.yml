@@ -32,9 +32,13 @@ jobs:
           copy README.md release\
           if exist LICENSE copy LICENSE release\
           
-      - name: Create ZIP archive
+      - name: Install 7zip
         run: |
-          powershell Compress-Archive -Path release\* -DestinationPath IconGenerator-Windows.zip
+          choco install 7zip -y
+          
+      - name: Create ZIP archive with 7zip
+        run: |
+          & "C:\Program Files\7-Zip\7z.exe" a -tzip IconGenerator-Windows.zip .\release\*
       
       - uses: actions/upload-artifact@v4
         with:
