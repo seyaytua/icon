@@ -23,8 +23,7 @@ jobs:
       
       - name: Build executable with metadata
         run: |
-          pyinstaller --onefile --windowed --name "IconGenerator" --version-file=version_info.txt --win-private-assemblies --win-no-prefer-redirects main.py
-      
+          pyinstaller --onefile --windowed --name "IconGenerator" --version-file=version_info.txt main.py
       - name: Create release package
         run: |
           mkdir release
