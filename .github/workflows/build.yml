@@ -10,17 +10,36 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: |
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
           pip install pyinstaller
           pip install -r requirements.txt
-          pyinstaller --onefile --windowed --name "{APPNAME}" main.py
+      
+      - name: Build executable with metadata
+        run: |
+          pyinstaller --onefile --windowed --name "IconGenerator" --version-file=version_info.txt --win-private-assemblies --win-no-prefer-redirects main.py
+      
+      - name: Create release package
+        run: |
+          mkdir release
+          copy dist\IconGenerator.exe release\
+          copy README.md release\
+          if exist LICENSE copy LICENSE release\
+          
+      - name: Create ZIP archive
+        run: |
+          powershell Compress-Archive -Path release\* -DestinationPath IconGenerator-Windows.zip
+      
       - uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: dist/*.exe
+          path: IconGenerator-Windows.zip
 
   create-release:
     needs: [build-windows]
@@ -28,8 +47,43 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - uses: actions/download-artifact@v4
+      
+      - name: Create Release Notes
+        run: |
+          cat > RELEASE_NOTES.md << 'EOFNOTES'
+          ## インストール方法
+          
+          ### Windows
+          1. `IconGenerator-Windows.zip` をダウンロード
+          2. ZIPファイルを解凍
+          3. `IconGenerator.exe` を実行
+          
+          ### 初回起動時の注意
+          Windows SmartScreenの警告が表示される場合:
+          1. "詳細情報" をクリック
+          2. "実行" をクリック
+          
+          このアプリケーションは安全です。警告は署名されていないためです。
+          
+          ## 主な機能
+          - マルチプラットフォーム対応のアイコン生成
+          - 8種類のプリセット（モダンフラット、グロッシー3D、ミニマル等）
+          - リアルタイムプレビュー
+          - 編集履歴機能（アンドゥ/リドゥ）
+          - 高度な画像処理（角丸、影、グラデーション等）
+          
+          ## セキュリティについて
+          - ✅ オープンソース
+          - ✅ GitHub Actionsで自動ビルド
+          - ✅ ネットワーク通信なし
+          - ✅ ローカルでのみ動作
+          EOFNOTES
+      
       - uses: softprops/action-gh-release@v1
         with:
           files: windows-build/*
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
         env:
-          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
