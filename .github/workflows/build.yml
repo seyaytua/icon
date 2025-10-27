@@ -24,12 +24,13 @@ jobs:
       - name: Build executable with metadata
         run: |
           pyinstaller --onefile --windowed --name "IconGenerator" --version-file=version_info.txt main.py
+      
       - name: Create release package
         run: |
           mkdir release
           copy dist\IconGenerator.exe release\
           copy README.md release\
-          if exist LICENSE copy LICENSE release\
+          if (Test-Path LICENSE) { copy LICENSE release\ }
           
       - name: Install 7zip
         run: |
